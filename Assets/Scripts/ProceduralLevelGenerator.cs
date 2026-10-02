@@ -4,31 +4,31 @@ using UnityEngine;
 public class ProceduralLevelGenerator : MonoBehaviour
 {
     [Header("Geração")]
-    [SerializeField] private int chunkSize = 12;
-    [SerializeField] private int viewDistance = 2;
-    [SerializeField] private float blockSize = 2f;
-    [SerializeField] private float wallHeight = 3.2f;
+    [SerializeField] int chunkSize = 12;
+    [SerializeField] int viewDistance = 2;
+    [SerializeField] float blockSize = 2f;
+    [SerializeField] float wallHeight = 3.2f;
 
     [Header("Player Prefab")]
-    [SerializeField] private GameObject playerPrefab;
+    [SerializeField] GameObject playerPrefab;
 
     [Header("Estilo cartoon")]
-    [SerializeField] private Material floorMaterial;
-    [SerializeField] private Material wallMaterial;
-    [SerializeField] private Material ceilingMaterial;
+    [SerializeField] Material floorMaterial;
+    [SerializeField] Material wallMaterial;
+    [SerializeField] Material ceilingMaterial;
 
     [Header("Movimento")]
-    [SerializeField] private float moveSpeed = 6f;
-    [SerializeField] private float runSpeed = 10f;
+    [SerializeField] float moveSpeed = 6f;
+    [SerializeField] float runSpeed = 10f;
 
-    private readonly Dictionary<Vector2Int, Chunk> chunks = new Dictionary<Vector2Int, Chunk>();
-    private Vector2Int currentChunk = new Vector2Int(int.MinValue, int.MinValue);
+    readonly Dictionary<Vector2Int, Chunk> chunks = new Dictionary<Vector2Int, Chunk>();
+    Vector2Int currentChunk = new Vector2Int(int.MinValue, int.MinValue);
 
-    private GameObject player;
-    private Rigidbody rb;
-    private Vector3 moveInput;
+    GameObject player;
+    Rigidbody rb;
+    Vector3 moveInput;
 
-    private void Awake()
+    void Awake()
     {
         if (floorMaterial == null || wallMaterial == null || ceilingMaterial == null)
         {
@@ -40,23 +40,23 @@ public class ProceduralLevelGenerator : MonoBehaviour
         Cursor.visible = false;
     }
 
-    private void Start()
+    void Start()
     {
         RefreshChunksAroundWorldPosition(Vector3.zero);
     }
 
-    private void Update()
+    void Update()
     {
         HandlePlayerInput();
         UpdateChunkGeneration();
     }
 
-    private void FixedUpdate()
+    void FixedUpdate()
     {
         ApplyMovement();
     }
 
-    private void SpawnPlayer()
+    void SpawnPlayer()
     {
         if (playerPrefab != null)
         {
@@ -69,16 +69,12 @@ public class ProceduralLevelGenerator : MonoBehaviour
             player.name = "Player";
             player.transform.position = new Vector3(0f, 2f, 0f);
             player.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
-
-            Renderer rend = player.GetComponent<Renderer>();
-            if (rend != null)
-                rend.enabled = false;
         }
 
         rb = player.GetComponent<Rigidbody>();
     }
 
-    private void HandlePlayerInput()
+    void HandlePlayerInput()
     {
         float horizontal = Input.GetAxisRaw("Horizontal");
         float vertical = Input.GetAxisRaw("Vertical");
@@ -99,7 +95,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         moveInput = (forward * input.z + right * input.x).normalized;
     }
 
-    private void ApplyMovement()
+    void ApplyMovement()
     {
         if (rb == null || player == null)
             return;
@@ -118,7 +114,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         }
     }
 
-    private void UpdateChunkGeneration()
+    void UpdateChunkGeneration()
     {
         Vector3 playerPos = player.transform.position;
         Vector2Int chunkCoord = new Vector2Int(
@@ -133,7 +129,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         RefreshChunksAroundWorldPosition(playerPos);
     }
 
-    private void RefreshChunksAroundWorldPosition(Vector3 worldPos)
+    void RefreshChunksAroundWorldPosition(Vector3 worldPos)
     {
         Vector2Int originChunk = new Vector2Int(
             Mathf.FloorToInt(worldPos.x / (chunkSize * blockSize)),
@@ -179,7 +175,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         }
     }
 
-    private Chunk CreateChunk(Vector2Int coord)
+    Chunk CreateChunk(Vector2Int coord)
     {
         GameObject root = new GameObject($"Chunk_{coord.x}_{coord.y}");
         root.transform.SetParent(transform);
@@ -204,7 +200,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         return chunk;
     }
 
-    private void BuildChunkMesh(Chunk chunk)
+    void BuildChunkMesh(Chunk chunk)
     {
         var vertices = new List<Vector3>();
         var triangles = new List<int>[] { new List<int>(), new List<int>(), new List<int>() };
@@ -251,8 +247,20 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
                 if (edge || sample > 0.68f)
                 {
-                    Vector3 center = new Vector3(px + blockSize * 0.5f, wallHeight * 0.5f, pz + blockSize * 0.5f);
-                    AddBox(vertices, triangles, center, new Vector3(blockSize, wallHeight, blockSize), 1);
+                    Vector3 p0 = new Vector3(px, 0f, pz);
+                    Vector3 p1 = new Vector3(px + blockSize, 0f, pz);
+                    Vector3 p2 = new Vector3(px + blockSize, 0f, pz + blockSize);
+                    Vector3 p3 = new Vector3(px, 0f, pz + blockSize);
+
+                    Vector3 p4 = new Vector3(px, wallHeight, pz);
+                    Vector3 p5 = new Vector3(px + blockSize, wallHeight, pz);
+                    Vector3 p6 = new Vector3(px + blockSize, wallHeight, pz + blockSize);
+                    Vector3 p7 = new Vector3(px, wallHeight, pz + blockSize);
+
+                    AddQuad(vertices, triangles, p0, p1, p5, p4, 1);
+                    AddQuad(vertices, triangles, p3, p7, p6, p2, 1);
+                    AddQuad(vertices, triangles, p0, p4, p7, p3, 1);
+                    AddQuad(vertices, triangles, p1, p2, p6, p5, 1);
                 }
             }
         }
@@ -279,7 +287,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         chunk.MeshCollider.sharedMesh = mesh;
     }
 
-    private static void AddQuad(List<Vector3> vertices, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
+    static void AddQuad(List<Vector3> vertices, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
     {
         int start = vertices.Count;
         vertices.Add(a);
@@ -296,28 +304,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         triangles[subMeshIndex].Add(start + 3);
     }
 
-    private static void AddBox(List<Vector3> vertices, List<int>[] triangles, Vector3 center, Vector3 size, int subMeshIndex)
-    {
-        Vector3 half = size * 0.5f;
-
-        Vector3 p000 = center + new Vector3(-half.x, -half.y, -half.z);
-        Vector3 p100 = center + new Vector3(half.x, -half.y, -half.z);
-        Vector3 p110 = center + new Vector3(half.x, -half.y, half.z);
-        Vector3 p010 = center + new Vector3(-half.x, -half.y, half.z);
-        Vector3 p001 = center + new Vector3(-half.x, half.y, -half.z);
-        Vector3 p101 = center + new Vector3(half.x, half.y, -half.z);
-        Vector3 p111 = center + new Vector3(half.x, half.y, half.z);
-        Vector3 p011 = center + new Vector3(-half.x, half.y, half.z);
-
-        AddQuad(vertices, triangles, p000, p100, p110, p010, subMeshIndex);
-        AddQuad(vertices, triangles, p001, p011, p111, p101, subMeshIndex);
-        AddQuad(vertices, triangles, p000, p001, p101, p100, subMeshIndex);
-        AddQuad(vertices, triangles, p010, p110, p111, p011, subMeshIndex);
-        AddQuad(vertices, triangles, p000, p010, p011, p001, subMeshIndex);
-        AddQuad(vertices, triangles, p100, p101, p111, p110, subMeshIndex);
-    }
-
-    private void CreateCartoonMaterials()
+    void CreateCartoonMaterials()
     {
         floorMaterial = new Material(Shader.Find("Standard"));
         floorMaterial.color = new Color(0.78f, 0.73f, 0.56f);
@@ -335,7 +322,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         ceilingMaterial.SetFloat("_Metallic", 0f);
     }
 
-    private class Chunk
+    class Chunk
     {
         public Vector2Int Coord;
         public GameObject Root;
