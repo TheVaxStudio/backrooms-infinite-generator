@@ -26,6 +26,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     GameObject player;
     Vector3 moveInput;
+    bool playerSpawned;
 
     void Awake()
     {
@@ -41,7 +42,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void Start()
     {
-        RefreshChunksAroundWorldPosition(Vector3.zero);
+        RefreshChunksAroundWorldPosition(player.transform.position);
     }
 
     void Update()
@@ -59,20 +60,25 @@ public class ProceduralLevelGenerator : MonoBehaviour
     {
         if (playerPrefab != null)
         {
-            player = Instantiate(playerPrefab, new Vector3(0f, 2f, 0f), Quaternion.identity);
+            player = Instantiate(playerPrefab, Vector3.zero, Quaternion.identity);
             player.name = "Player";
         }
         else
         {
             player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             player.name = "Player";
-            player.transform.position = new Vector3(0f, 2f, 0f);
+            player.transform.position = Vector3.zero;
             player.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
         }
+
+        playerSpawned = true;
     }
 
     void HandlePlayerInput()
     {
+        if (!playerSpawned || player == null)
+            return;
+
         float horizontal = Input.GetAxisRaw("Horizontal");
         float vertical = Input.GetAxisRaw("Vertical");
 
@@ -94,7 +100,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void ApplyMovement()
     {
-        if (player == null)
+        if (!playerSpawned || player == null)
             return;
 
         Rigidbody rb = player.GetComponent<Rigidbody>();
@@ -117,6 +123,9 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void UpdateChunkGeneration()
     {
+        if (!playerSpawned || player == null)
+            return;
+
         Vector3 playerPos = player.transform.position;
         Vector2Int chunkCoord = new Vector2Int(
             Mathf.FloorToInt(playerPos.x / (chunkSize * cellSize)),
@@ -206,6 +215,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         bool[,] walkable = GenerateCorridorMap(chunk.Coord);
 
         var vertices = new List<Vector3>();
+        var uvs = new List<Vector2>();
         var triangles = new List<int>[] { new List<int>(), new List<int>(), new List<int>() };
 
         float minX = chunk.Coord.x * chunkSize * cellSize;
@@ -226,14 +236,14 @@ public class ProceduralLevelGenerator : MonoBehaviour
                 Vector3 c = new Vector3(px + cellSize, 0f, pz + cellSize);
                 Vector3 d = new Vector3(px, 0f, pz + cellSize);
 
-                AddQuad(vertices, triangles, a, b, c, d, 0);
+                AddQuadWithUV(vertices, uvs, triangles, a, b, c, d, 0);
 
                 Vector3 e = a + Vector3.up * wallHeight;
                 Vector3 f = b + Vector3.up * wallHeight;
                 Vector3 g = c + Vector3.up * wallHeight;
                 Vector3 h = d + Vector3.up * wallHeight;
 
-                AddQuad(vertices, triangles, e, h, g, f, 2);
+                AddQuadWithUV(vertices, uvs, triangles, e, h, g, f, 2);
             }
         }
 
@@ -259,7 +269,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
 
                 if (rightX >= chunkSize || !walkable[rightX, z])
@@ -269,7 +279,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
 
-                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
 
                 if (downZ < 0 || !walkable[x, downZ])
@@ -279,7 +289,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz);
                     Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
 
                 if (upZ >= chunkSize || !walkable[x, upZ])
@@ -289,7 +299,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
 
-                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
             }
         }
@@ -298,11 +308,13 @@ public class ProceduralLevelGenerator : MonoBehaviour
         if (mesh == null)
         {
             mesh = new Mesh();
+            mesh.name = $"BackroomsMesh_{chunk.Coord.x}_{chunk.Coord.y}";
             chunk.MeshFilter.sharedMesh = mesh;
         }
 
         mesh.Clear();
         mesh.vertices = vertices.ToArray();
+        mesh.uv = uvs.ToArray();
         mesh.subMeshCount = 3;
 
         mesh.SetTriangles(triangles[0], 0);
@@ -363,13 +375,19 @@ public class ProceduralLevelGenerator : MonoBehaviour
         return walkable;
     }
 
-    static void AddQuad(List<Vector3> vertices, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
+    static void AddQuadWithUV(List<Vector3> vertices, List<Vector2> uvs, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
     {
         int start = vertices.Count;
+
         vertices.Add(a);
         vertices.Add(b);
         vertices.Add(c);
         vertices.Add(d);
+
+        uvs.Add(new Vector2(0f, 0f));
+        uvs.Add(new Vector2(1f, 0f));
+        uvs.Add(new Vector2(1f, 1f));
+        uvs.Add(new Vector2(0f, 1f));
 
         triangles[subMeshIndex].Add(start + 0);
         triangles[subMeshIndex].Add(start + 1);
