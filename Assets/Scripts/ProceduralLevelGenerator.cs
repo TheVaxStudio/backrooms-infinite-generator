@@ -4,10 +4,10 @@ using UnityEngine;
 public class ProceduralLevelGenerator : MonoBehaviour
 {
     [Header("Geração")]
-    [SerializeField] int chunkSize = 12;
+    [SerializeField] int chunkSize = 10;
     [SerializeField] int viewDistance = 2;
-    [SerializeField] float blockSize = 2f;
-    [SerializeField] float wallHeight = 3.2f;
+    [SerializeField] float cellSize = 2f;
+    [SerializeField] float wallHeight = 16f;
 
     [Header("Player Prefab")]
     [SerializeField] GameObject playerPrefab;
@@ -25,7 +25,6 @@ public class ProceduralLevelGenerator : MonoBehaviour
     Vector2Int currentChunk = new Vector2Int(int.MinValue, int.MinValue);
 
     GameObject player;
-    Rigidbody rb;
     Vector3 moveInput;
 
     void Awake()
@@ -70,8 +69,6 @@ public class ProceduralLevelGenerator : MonoBehaviour
             player.transform.position = new Vector3(0f, 2f, 0f);
             player.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
         }
-
-        rb = player.GetComponent<Rigidbody>();
     }
 
     void HandlePlayerInput()
@@ -97,7 +94,11 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void ApplyMovement()
     {
-        if (rb == null || player == null)
+        if (player == null)
+            return;
+
+        Rigidbody rb = player.GetComponent<Rigidbody>();
+        if (rb == null)
             return;
 
         float speed = Input.GetKey(KeyCode.LeftShift) ? runSpeed : moveSpeed;
@@ -118,8 +119,8 @@ public class ProceduralLevelGenerator : MonoBehaviour
     {
         Vector3 playerPos = player.transform.position;
         Vector2Int chunkCoord = new Vector2Int(
-            Mathf.FloorToInt(playerPos.x / (chunkSize * blockSize)),
-            Mathf.FloorToInt(playerPos.z / (chunkSize * blockSize))
+            Mathf.FloorToInt(playerPos.x / (chunkSize * cellSize)),
+            Mathf.FloorToInt(playerPos.z / (chunkSize * cellSize))
         );
 
         if (chunkCoord == currentChunk)
@@ -132,8 +133,8 @@ public class ProceduralLevelGenerator : MonoBehaviour
     void RefreshChunksAroundWorldPosition(Vector3 worldPos)
     {
         Vector2Int originChunk = new Vector2Int(
-            Mathf.FloorToInt(worldPos.x / (chunkSize * blockSize)),
-            Mathf.FloorToInt(worldPos.z / (chunkSize * blockSize))
+            Mathf.FloorToInt(worldPos.x / (chunkSize * cellSize)),
+            Mathf.FloorToInt(worldPos.z / (chunkSize * cellSize))
         );
 
         for (int x = -viewDistance; x <= viewDistance; x++)
@@ -202,23 +203,28 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void BuildChunkMesh(Chunk chunk)
     {
+        bool[,] walkable = GenerateCorridorMap(chunk.Coord);
+
         var vertices = new List<Vector3>();
         var triangles = new List<int>[] { new List<int>(), new List<int>(), new List<int>() };
 
-        float minX = chunk.Coord.x * chunkSize * blockSize;
-        float minZ = chunk.Coord.y * chunkSize * blockSize;
+        float minX = chunk.Coord.x * chunkSize * cellSize;
+        float minZ = chunk.Coord.y * chunkSize * cellSize;
 
         for (int x = 0; x < chunkSize; x++)
         {
             for (int z = 0; z < chunkSize; z++)
             {
-                float px = minX + x * blockSize;
-                float pz = minZ + z * blockSize;
+                if (!walkable[x, z])
+                    continue;
+
+                float px = minX + x * cellSize;
+                float pz = minZ + z * cellSize;
 
                 Vector3 a = new Vector3(px, 0f, pz);
-                Vector3 b = new Vector3(px + blockSize, 0f, pz);
-                Vector3 c = new Vector3(px + blockSize, 0f, pz + blockSize);
-                Vector3 d = new Vector3(px, 0f, pz + blockSize);
+                Vector3 b = new Vector3(px + cellSize, 0f, pz);
+                Vector3 c = new Vector3(px + cellSize, 0f, pz + cellSize);
+                Vector3 d = new Vector3(px, 0f, pz + cellSize);
 
                 AddQuad(vertices, triangles, a, b, c, d, 0);
 
@@ -235,32 +241,55 @@ public class ProceduralLevelGenerator : MonoBehaviour
         {
             for (int z = 0; z < chunkSize; z++)
             {
-                bool edge = x == 0 || z == 0 || x == chunkSize - 1 || z == chunkSize - 1;
+                if (!walkable[x, z])
+                    continue;
 
-                float px = minX + x * blockSize;
-                float pz = minZ + z * blockSize;
+                float px = minX + x * cellSize;
+                float pz = minZ + z * cellSize;
 
-                float sample = Mathf.PerlinNoise(
-                    ((chunk.Coord.x * chunkSize) + x + 11) * 0.26f,
-                    ((chunk.Coord.y * chunkSize) + z + 17) * 0.26f
-                );
+                int leftX = x - 1;
+                int rightX = x + 1;
+                int downZ = z - 1;
+                int upZ = z + 1;
 
-                if (edge || sample > 0.68f)
+                if (leftX < 0 || !walkable[leftX, z])
                 {
                     Vector3 p0 = new Vector3(px, 0f, pz);
-                    Vector3 p1 = new Vector3(px + blockSize, 0f, pz);
-                    Vector3 p2 = new Vector3(px + blockSize, 0f, pz + blockSize);
-                    Vector3 p3 = new Vector3(px, 0f, pz + blockSize);
+                    Vector3 p1 = new Vector3(px, 0f, pz + cellSize);
+                    Vector3 p2 = new Vector3(px, wallHeight, pz + cellSize);
+                    Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    Vector3 p4 = new Vector3(px, wallHeight, pz);
-                    Vector3 p5 = new Vector3(px + blockSize, wallHeight, pz);
-                    Vector3 p6 = new Vector3(px + blockSize, wallHeight, pz + blockSize);
-                    Vector3 p7 = new Vector3(px, wallHeight, pz + blockSize);
+                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                }
 
-                    AddQuad(vertices, triangles, p0, p1, p5, p4, 1);
-                    AddQuad(vertices, triangles, p3, p7, p6, p2, 1);
-                    AddQuad(vertices, triangles, p0, p4, p7, p3, 1);
-                    AddQuad(vertices, triangles, p1, p2, p6, p5, 1);
+                if (rightX >= chunkSize || !walkable[rightX, z])
+                {
+                    Vector3 p0 = new Vector3(px + cellSize, 0f, pz);
+                    Vector3 p1 = new Vector3(px + cellSize, wallHeight, pz);
+                    Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
+                    Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
+
+                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                }
+
+                if (downZ < 0 || !walkable[x, downZ])
+                {
+                    Vector3 p0 = new Vector3(px, 0f, pz);
+                    Vector3 p1 = new Vector3(px + cellSize, 0f, pz);
+                    Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz);
+                    Vector3 p3 = new Vector3(px, wallHeight, pz);
+
+                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
+                }
+
+                if (upZ >= chunkSize || !walkable[x, upZ])
+                {
+                    Vector3 p0 = new Vector3(px, 0f, pz + cellSize);
+                    Vector3 p1 = new Vector3(px, wallHeight, pz + cellSize);
+                    Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
+                    Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
+
+                    AddQuad(vertices, triangles, p0, p1, p2, p3, 1);
                 }
             }
         }
@@ -285,6 +314,53 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
         chunk.MeshCollider.sharedMesh = null;
         chunk.MeshCollider.sharedMesh = mesh;
+    }
+
+    bool[,] GenerateCorridorMap(Vector2Int chunkCoord)
+    {
+        bool[,] walkable = new bool[chunkSize, chunkSize];
+        int centerX = chunkSize / 2;
+        int centerZ = chunkSize / 2;
+
+        Vector2Int current = new Vector2Int(centerX, centerZ);
+        walkable[current.x, current.y] = true;
+
+        int steps = chunkSize * chunkSize * 6;
+        for (int i = 0; i < steps; i++)
+        {
+            int dir = Random.Range(0, 4);
+
+            int nextX = current.x;
+            int nextZ = current.y;
+
+            if (dir == 0) nextX++;
+            if (dir == 1) nextX--;
+            if (dir == 2) nextZ++;
+            if (dir == 3) nextZ--;
+
+            if (nextX < 0 || nextX >= chunkSize || nextZ < 0 || nextZ >= chunkSize)
+                continue;
+
+            if (Random.value < 0.85f || walkable[nextX, nextZ] == false)
+            {
+                walkable[nextX, nextZ] = true;
+                current = new Vector2Int(nextX, nextZ);
+            }
+        }
+
+        int extraPasses = chunkSize * 2;
+        for (int i = 0; i < extraPasses; i++)
+        {
+            int x = Random.Range(0, chunkSize);
+            int z = Random.Range(0, chunkSize);
+
+            if (!walkable[x, z])
+            {
+                walkable[x, z] = true;
+            }
+        }
+
+        return walkable;
     }
 
     static void AddQuad(List<Vector3> vertices, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
