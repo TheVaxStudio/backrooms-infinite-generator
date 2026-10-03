@@ -4,7 +4,7 @@ using UnityEngine;
 public class ProceduralLevelGenerator : MonoBehaviour
 {
     [Header("Geração")]
-    [SerializeField] int chunkSize = 10;
+    [SerializeField] int chunkSize = 12;
     [SerializeField] int viewDistance = 2;
     [SerializeField] float cellSize = 2f;
     [SerializeField] float wallHeight = 16f;
@@ -17,15 +17,10 @@ public class ProceduralLevelGenerator : MonoBehaviour
     [SerializeField] Material wallMaterial;
     [SerializeField] Material ceilingMaterial;
 
-    [Header("Movimento")]
-    [SerializeField] float moveSpeed = 6f;
-    [SerializeField] float runSpeed = 10f;
-
     readonly Dictionary<Vector2Int, Chunk> chunks = new Dictionary<Vector2Int, Chunk>();
     Vector2Int currentChunk = new Vector2Int(int.MinValue, int.MinValue);
 
     GameObject player;
-    Vector3 moveInput;
     bool playerSpawned;
 
     void Awake()
@@ -47,13 +42,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void Update()
     {
-        HandlePlayerInput();
         UpdateChunkGeneration();
-    }
-
-    void FixedUpdate()
-    {
-        ApplyMovement();
     }
 
     void SpawnPlayer()
@@ -72,53 +61,6 @@ public class ProceduralLevelGenerator : MonoBehaviour
         }
 
         playerSpawned = true;
-    }
-
-    void HandlePlayerInput()
-    {
-        if (!playerSpawned || player == null)
-            return;
-
-        float horizontal = Input.GetAxisRaw("Horizontal");
-        float vertical = Input.GetAxisRaw("Vertical");
-
-        Vector3 input = new Vector3(horizontal, 0f, vertical);
-        if (input.sqrMagnitude > 1f)
-            input.Normalize();
-
-        Vector3 forward = Vector3.forward;
-        Vector3 right = Vector3.right;
-
-        if (Camera.main != null)
-        {
-            forward = Vector3.Scale(Camera.main.transform.forward, new Vector3(1f, 0f, 1f)).normalized;
-            right = Vector3.Scale(Camera.main.transform.right, new Vector3(1f, 0f, 1f)).normalized;
-        }
-
-        moveInput = (forward * input.z + right * input.x).normalized;
-    }
-
-    void ApplyMovement()
-    {
-        if (!playerSpawned || player == null)
-            return;
-
-        Rigidbody rb = player.GetComponent<Rigidbody>();
-        if (rb == null)
-            return;
-
-        float speed = Input.GetKey(KeyCode.LeftShift) ? runSpeed : moveSpeed;
-
-        Vector3 moveForce = moveInput * speed;
-        moveForce.y = rb.velocity.y;
-
-        rb.velocity = moveForce;
-
-        if (moveInput.sqrMagnitude > 0.01f)
-        {
-            Quaternion targetRot = Quaternion.LookRotation(moveInput, Vector3.up);
-            player.transform.rotation = Quaternion.Slerp(player.transform.rotation, targetRot, 12f * Time.deltaTime);
-        }
     }
 
     void UpdateChunkGeneration()
@@ -212,7 +154,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void BuildChunkMesh(Chunk chunk)
     {
-        bool[,] walkable = GenerateCorridorMap(chunk.Coord);
+        bool[,] labyrinth = GenerateLabyrinth(chunk.Coord);
 
         var vertices = new List<Vector3>();
         var uvs = new List<Vector2>();
@@ -225,7 +167,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         {
             for (int z = 0; z < chunkSize; z++)
             {
-                if (!walkable[x, z])
+                if (!labyrinth[x, z])
                     continue;
 
                 float px = minX + x * cellSize;
@@ -236,14 +178,14 @@ public class ProceduralLevelGenerator : MonoBehaviour
                 Vector3 c = new Vector3(px + cellSize, 0f, pz + cellSize);
                 Vector3 d = new Vector3(px, 0f, pz + cellSize);
 
-                AddQuadWithUV(vertices, uvs, triangles, a, b, c, d, 0);
+                AddQuadWithUV512(vertices, uvs, triangles, a, b, c, d, 0, x, z, chunk.Coord);
 
                 Vector3 e = a + Vector3.up * wallHeight;
                 Vector3 f = b + Vector3.up * wallHeight;
                 Vector3 g = c + Vector3.up * wallHeight;
                 Vector3 h = d + Vector3.up * wallHeight;
 
-                AddQuadWithUV(vertices, uvs, triangles, e, h, g, f, 2);
+                AddQuadWithUV512(vertices, uvs, triangles, e, h, g, f, 2, x, z, chunk.Coord);
             }
         }
 
@@ -251,55 +193,55 @@ public class ProceduralLevelGenerator : MonoBehaviour
         {
             for (int z = 0; z < chunkSize; z++)
             {
-                if (!walkable[x, z])
+                if (!labyrinth[x, z])
                     continue;
 
                 float px = minX + x * cellSize;
                 float pz = minZ + z * cellSize;
 
-                int leftX = x - 1;
-                int rightX = x + 1;
-                int downZ = z - 1;
-                int upZ = z + 1;
+                bool leftWall = x == 0 || !labyrinth[x - 1, z];
+                bool rightWall = x == chunkSize - 1 || !labyrinth[x + 1, z];
+                bool downWall = z == 0 || !labyrinth[x, z - 1];
+                bool upWall = z == chunkSize - 1 || !labyrinth[x, z + 1];
 
-                if (leftX < 0 || !walkable[leftX, z])
+                if (leftWall)
                 {
                     Vector3 p0 = new Vector3(px, 0f, pz);
                     Vector3 p1 = new Vector3(px, 0f, pz + cellSize);
                     Vector3 p2 = new Vector3(px, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
                 }
 
-                if (rightX >= chunkSize || !walkable[rightX, z])
+                if (rightWall)
                 {
                     Vector3 p0 = new Vector3(px + cellSize, 0f, pz);
                     Vector3 p1 = new Vector3(px + cellSize, wallHeight, pz);
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
 
-                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
                 }
 
-                if (downZ < 0 || !walkable[x, downZ])
+                if (downWall)
                 {
                     Vector3 p0 = new Vector3(px, 0f, pz);
                     Vector3 p1 = new Vector3(px + cellSize, 0f, pz);
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz);
                     Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
                 }
 
-                if (upZ >= chunkSize || !walkable[x, upZ])
+                if (upWall)
                 {
                     Vector3 p0 = new Vector3(px, 0f, pz + cellSize);
                     Vector3 p1 = new Vector3(px, wallHeight, pz + cellSize);
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
 
-                    AddQuadWithUV(vertices, uvs, triangles, p0, p1, p2, p3, 1);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
                 }
             }
         }
@@ -328,54 +270,94 @@ public class ProceduralLevelGenerator : MonoBehaviour
         chunk.MeshCollider.sharedMesh = mesh;
     }
 
-    bool[,] GenerateCorridorMap(Vector2Int chunkCoord)
+    bool[,] GenerateLabyrinth(Vector2Int chunkCoord)
     {
-        bool[,] walkable = new bool[chunkSize, chunkSize];
-        int centerX = chunkSize / 2;
-        int centerZ = chunkSize / 2;
+        bool[,] grid = new bool[chunkSize, chunkSize];
 
-        Vector2Int current = new Vector2Int(centerX, centerZ);
-        walkable[current.x, current.y] = true;
-
-        int steps = chunkSize * chunkSize * 6;
-        for (int i = 0; i < steps; i++)
+        for (int x = 0; x < chunkSize; x++)
         {
-            int dir = Random.Range(0, 4);
-
-            int nextX = current.x;
-            int nextZ = current.y;
-
-            if (dir == 0) nextX++;
-            if (dir == 1) nextX--;
-            if (dir == 2) nextZ++;
-            if (dir == 3) nextZ--;
-
-            if (nextX < 0 || nextX >= chunkSize || nextZ < 0 || nextZ >= chunkSize)
-                continue;
-
-            if (Random.value < 0.85f || walkable[nextX, nextZ] == false)
+            for (int z = 0; z < chunkSize; z++)
             {
-                walkable[nextX, nextZ] = true;
-                current = new Vector2Int(nextX, nextZ);
+                grid[x, z] = false;
             }
         }
 
-        int extraPasses = chunkSize * 2;
-        for (int i = 0; i < extraPasses; i++)
-        {
-            int x = Random.Range(0, chunkSize);
-            int z = Random.Range(0, chunkSize);
+        int startX = chunkSize / 2;
+        int startZ = chunkSize / 2;
 
-            if (!walkable[x, z])
+        grid[startX, startZ] = true;
+
+        int maxSteps = chunkSize * chunkSize * 8;
+        Vector2Int current = new Vector2Int(startX, startZ);
+
+        for (int i = 0; i < maxSteps; i++)
+        {
+            List<Vector2Int> dirs = new List<Vector2Int>
             {
-                walkable[x, z] = true;
+                new Vector2Int(1, 0),
+                new Vector2Int(-1, 0),
+                new Vector2Int(0, 1),
+                new Vector2Int(0, -1)
+            };
+
+            dirs = Shuffle(dirs);
+
+            bool moved = false;
+
+            for (int d = 0; d < dirs.Count; d++)
+            {
+                int nx = current.x + dirs[d].x;
+                int nz = current.y + dirs[d].y;
+
+                if (nx < 0 || nx >= chunkSize || nz < 0 || nz >= chunkSize)
+                    continue;
+
+                if (!grid[nx, nz])
+                {
+                    grid[nx, nz] = true;
+                    current = new Vector2Int(nx, nz);
+                    moved = true;
+                    break;
+                }
+            }
+
+            if (!moved)
+            {
+                if (Random.value < 0.35f)
+                {
+                    current = new Vector2Int(Random.Range(0, chunkSize), Random.Range(0, chunkSize));
+                }
             }
         }
 
-        return walkable;
+        for (int x = 0; x < chunkSize; x++)
+        {
+            for (int z = 0; z < chunkSize; z++)
+            {
+                if (!grid[x, z] && Random.value < 0.12f)
+                {
+                    grid[x, z] = true;
+                }
+            }
+        }
+
+        return grid;
     }
 
-    static void AddQuadWithUV(List<Vector3> vertices, List<Vector2> uvs, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
+    List<Vector2Int> Shuffle(List<Vector2Int> list)
+    {
+        for (int i = 0; i < list.Count; i++)
+        {
+            Vector2Int temp = list[i];
+            int randomIndex = Random.Range(i, list.Count);
+            list[i] = list[randomIndex];
+            list[randomIndex] = temp;
+        }
+
+        return list;
+    }
+
+    static void AddQuadWithUV512(List<Vector3> vertices, List<Vector2> uvs, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex, int x, int z, Vector2Int chunkCoord)
     {
         int start = vertices.Count;
 
@@ -384,10 +366,16 @@ public class ProceduralLevelGenerator : MonoBehaviour
         vertices.Add(c);
         vertices.Add(d);
 
-        uvs.Add(new Vector2(0f, 0f));
-        uvs.Add(new Vector2(1f, 0f));
-        uvs.Add(new Vector2(1f, 1f));
-        uvs.Add(new Vector2(0f, 1f));
+        float uScale = 0.25f;
+        float vScale = 0.25f;
+
+        float uOffset = (x * uScale) % 1f;
+        float vOffset = (z * vScale) % 1f;
+
+        uvs.Add(new Vector2(uOffset, vOffset));
+        uvs.Add(new Vector2(uOffset + uScale, vOffset));
+        uvs.Add(new Vector2(uOffset + uScale, vOffset + vScale));
+        uvs.Add(new Vector2(uOffset, vOffset + vScale));
 
         triangles[subMeshIndex].Add(start + 0);
         triangles[subMeshIndex].Add(start + 1);
@@ -400,20 +388,114 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void CreateCartoonMaterials()
     {
-        floorMaterial = new Material(Shader.Find("Standard"));
+        Texture2D floorTex = GenerateFloorTexture();
+        Texture2D wallTex = GenerateWallTexture();
+        Texture2D ceilTex = GenerateCeilingTexture();
+
+        floorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        floorMaterial.mainTexture = floorTex;
         floorMaterial.color = new Color(0.78f, 0.73f, 0.56f);
-        floorMaterial.SetFloat("_Glossiness", 0f);
         floorMaterial.SetFloat("_Metallic", 0f);
+        floorMaterial.SetFloat("_Smoothness", 0f);
 
-        wallMaterial = new Material(Shader.Find("Standard"));
+        wallMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        wallMaterial.mainTexture = wallTex;
         wallMaterial.color = new Color(0.93f, 0.90f, 0.80f);
-        wallMaterial.SetFloat("_Glossiness", 0f);
         wallMaterial.SetFloat("_Metallic", 0f);
+        wallMaterial.SetFloat("_Smoothness", 0f);
 
-        ceilingMaterial = new Material(Shader.Find("Standard"));
+        ceilingMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        ceilingMaterial.mainTexture = ceilTex;
         ceilingMaterial.color = new Color(0.97f, 0.95f, 0.88f);
-        ceilingMaterial.SetFloat("_Glossiness", 0f);
         ceilingMaterial.SetFloat("_Metallic", 0f);
+        ceilingMaterial.SetFloat("_Smoothness", 0f);
+    }
+
+    Texture2D GenerateFloorTexture()
+    {
+        Texture2D tex = new Texture2D(512, 512, TextureFormat.RGB24, false);
+        Color[] pixels = new Color[512 * 512];
+
+        for (int y = 0; y < 512; y++)
+        {
+            for (int x = 0; x < 512; x++)
+            {
+                float noise = Mathf.PerlinNoise(x * 0.01f, y * 0.01f);
+                Color col = Color.Lerp(
+                    new Color(0.78f, 0.73f, 0.56f),
+                    new Color(0.70f, 0.65f, 0.48f),
+                    noise
+                );
+
+                if (Random.value < 0.05f)
+                    col = Color.Lerp(col, new Color(0.5f, 0.5f, 0.5f), 0.3f);
+
+                pixels[y * 512 + x] = col;
+            }
+        }
+
+        tex.SetPixels(pixels);
+        tex.Apply();
+        return tex;
+    }
+
+    Texture2D GenerateWallTexture()
+    {
+        Texture2D tex = new Texture2D(512, 512, TextureFormat.RGB24, false);
+        Color[] pixels = new Color[512 * 512];
+
+        for (int y = 0; y < 512; y++)
+        {
+            for (int x = 0; x < 512; x++)
+            {
+                float noise = Mathf.PerlinNoise(x * 0.01f, y * 0.015f);
+                Color col = Color.Lerp(
+                    new Color(0.93f, 0.90f, 0.80f),
+                    new Color(0.88f, 0.84f, 0.72f),
+                    noise
+                );
+
+                if (y % 64 < 4)
+                    col = Color.Lerp(col, new Color(0.6f, 0.55f, 0.4f), 0.4f);
+
+                if (Random.value < 0.08f)
+                    col = Color.Lerp(col, new Color(0.4f, 0.4f, 0.3f), 0.5f);
+
+                pixels[y * 512 + x] = col;
+            }
+        }
+
+        tex.SetPixels(pixels);
+        tex.Apply();
+        return tex;
+    }
+
+    Texture2D GenerateCeilingTexture()
+    {
+        Texture2D tex = new Texture2D(512, 512, TextureFormat.RGB24, false);
+        Color[] pixels = new Color[512 * 512];
+
+        for (int y = 0; y < 512; y++)
+        {
+            for (int x = 0; x < 512; x++)
+            {
+                float noise = Mathf.PerlinNoise(x * 0.008f, y * 0.008f);
+                Color col = Color.Lerp(
+                    new Color(0.97f, 0.95f, 0.88f),
+                    new Color(0.92f, 0.90f, 0.82f),
+                    noise
+                );
+
+                if (x % 128 < 8 && y % 128 < 8)
+                    col = new Color(1f, 0.98f, 0.85f);
+
+                pixels[y * 512 + x] = col;
+            }
+        }
+
+        tex.SetPixels(pixels);
+        tex.Apply();
+        return tex;
     }
 
     class Chunk
