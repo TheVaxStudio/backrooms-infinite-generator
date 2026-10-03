@@ -17,11 +17,17 @@ public class ProceduralLevelGenerator : MonoBehaviour
     [SerializeField] Material wallMaterial;
     [SerializeField] Material ceilingMaterial;
 
+    [Header("Lighting")]
+    [SerializeField] Color lightColor = new Color(1f, 0.96f, 0.7f);
+    [SerializeField] float lightRange = 35f;
+    [SerializeField] float lightIntensity = 2.5f;
+
     readonly Dictionary<Vector2Int, Chunk> chunks = new Dictionary<Vector2Int, Chunk>();
     Vector2Int currentChunk = new Vector2Int(int.MinValue, int.MinValue);
 
     GameObject player;
     bool playerSpawned;
+    GameObject lightsContainer;
 
     void Awake()
     {
@@ -30,6 +36,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
             CreateCartoonMaterials();
         }
 
+        CreateLightingContainer();
         SpawnPlayer();
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -38,11 +45,57 @@ public class ProceduralLevelGenerator : MonoBehaviour
     void Start()
     {
         RefreshChunksAroundWorldPosition(player.transform.position);
+        SpawnBackroomsLights();
     }
 
     void Update()
     {
         UpdateChunkGeneration();
+    }
+
+    void CreateLightingContainer()
+    {
+        lightsContainer = new GameObject("BackroomsLights");
+        lightsContainer.transform.SetParent(transform);
+    }
+
+    void SpawnBackroomsLights()
+    {
+        if (lightsContainer == null)
+            return;
+
+        GameObject lightObj1 = new GameObject("CeilingLight1");
+        lightObj1.transform.SetParent(lightsContainer.transform);
+        lightObj1.transform.localPosition = new Vector3(0f, wallHeight, 0f);
+
+        Light light1 = lightObj1.AddComponent<Light>();
+        light1.type = LightType.Point;
+        light1.range = lightRange;
+        light1.intensity = lightIntensity;
+        light1.color = lightColor;
+        light1.shadows = LightShadows.Soft;
+
+        GameObject lightObj2 = new GameObject("CeilingLight2");
+        lightObj2.transform.SetParent(lightsContainer.transform);
+        lightObj2.transform.localPosition = new Vector3(15f, wallHeight, 15f);
+
+        Light light2 = lightObj2.AddComponent<Light>();
+        light2.type = LightType.Point;
+        light2.range = lightRange * 0.9f;
+        light2.intensity = lightIntensity * 0.8f;
+        light2.color = lightColor;
+        light2.shadows = LightShadows.Soft;
+
+        GameObject lightObj3 = new GameObject("CeilingLight3");
+        lightObj3.transform.SetParent(lightsContainer.transform);
+        lightObj3.transform.localPosition = new Vector3(-15f, wallHeight, 15f);
+
+        Light light3 = lightObj3.AddComponent<Light>();
+        light3.type = LightType.Point;
+        light3.range = lightRange * 0.85f;
+        light3.intensity = lightIntensity * 0.75f;
+        light3.color = lightColor;
+        light3.shadows = LightShadows.Soft;
     }
 
     void SpawnPlayer()
@@ -178,14 +231,14 @@ public class ProceduralLevelGenerator : MonoBehaviour
                 Vector3 c = new Vector3(px + cellSize, 0f, pz + cellSize);
                 Vector3 d = new Vector3(px, 0f, pz + cellSize);
 
-                AddQuadWithUV512(vertices, uvs, triangles, a, b, c, d, 0, x, z, chunk.Coord);
+                AddQuadWithUV512(vertices, uvs, triangles, a, b, c, d, 0);
 
                 Vector3 e = a + Vector3.up * wallHeight;
                 Vector3 f = b + Vector3.up * wallHeight;
                 Vector3 g = c + Vector3.up * wallHeight;
                 Vector3 h = d + Vector3.up * wallHeight;
 
-                AddQuadWithUV512(vertices, uvs, triangles, e, h, g, f, 2, x, z, chunk.Coord);
+                AddQuadWithUV512(vertices, uvs, triangles, e, h, g, f, 2);
             }
         }
 
@@ -211,7 +264,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
 
                 if (rightWall)
@@ -221,7 +274,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
 
-                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
 
                 if (downWall)
@@ -231,7 +284,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz);
                     Vector3 p3 = new Vector3(px, wallHeight, pz);
 
-                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
 
                 if (upWall)
@@ -241,7 +294,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
                     Vector3 p2 = new Vector3(px + cellSize, wallHeight, pz + cellSize);
                     Vector3 p3 = new Vector3(px + cellSize, 0f, pz + cellSize);
 
-                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1, x, z, chunk.Coord);
+                    AddQuadWithUV512(vertices, uvs, triangles, p0, p1, p2, p3, 1);
                 }
             }
         }
@@ -357,7 +410,7 @@ public class ProceduralLevelGenerator : MonoBehaviour
         return list;
     }
 
-    static void AddQuadWithUV512(List<Vector3> vertices, List<Vector2> uvs, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex, int x, int z, Vector2Int chunkCoord)
+    static void AddQuadWithUV512(List<Vector3> vertices, List<Vector2> uvs, List<int>[] triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, int subMeshIndex)
     {
         int start = vertices.Count;
 
@@ -366,16 +419,10 @@ public class ProceduralLevelGenerator : MonoBehaviour
         vertices.Add(c);
         vertices.Add(d);
 
-        float uScale = 0.25f;
-        float vScale = 0.25f;
-
-        float uOffset = (x * uScale) % 1f;
-        float vOffset = (z * vScale) % 1f;
-
-        uvs.Add(new Vector2(uOffset, vOffset));
-        uvs.Add(new Vector2(uOffset + uScale, vOffset));
-        uvs.Add(new Vector2(uOffset + uScale, vOffset + vScale));
-        uvs.Add(new Vector2(uOffset, vOffset + vScale));
+        uvs.Add(new Vector2(0f, 0f));
+        uvs.Add(new Vector2(1f, 0f));
+        uvs.Add(new Vector2(1f, 1f));
+        uvs.Add(new Vector2(0f, 1f));
 
         triangles[subMeshIndex].Add(start + 0);
         triangles[subMeshIndex].Add(start + 1);
@@ -388,24 +435,28 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     void CreateCartoonMaterials()
     {
+        Shader toonShader = Shader.Find("Room 700/URP/Toon Complete");
+        if (toonShader == null)
+            toonShader = Shader.Find("Universal Render Pipeline/Lit");
+
         Texture2D floorTex = GenerateFloorTexture();
         Texture2D wallTex = GenerateWallTexture();
-        Texture2D ceilTex = GenerateCeilingTexture();
+        Texture2D ceilingTex = GenerateCeilingTexture();
 
-        floorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        floorMaterial = new Material(toonShader);
         floorMaterial.mainTexture = floorTex;
         floorMaterial.color = new Color(0.78f, 0.73f, 0.56f);
         floorMaterial.SetFloat("_Metallic", 0f);
         floorMaterial.SetFloat("_Smoothness", 0f);
 
-        wallMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        wallMaterial = new Material(toonShader);
         wallMaterial.mainTexture = wallTex;
         wallMaterial.color = new Color(0.93f, 0.90f, 0.80f);
         wallMaterial.SetFloat("_Metallic", 0f);
         wallMaterial.SetFloat("_Smoothness", 0f);
 
-        ceilingMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        ceilingMaterial.mainTexture = ceilTex;
+        ceilingMaterial = new Material(toonShader);
+        ceilingMaterial.mainTexture = ceilingTex;
         ceilingMaterial.color = new Color(0.97f, 0.95f, 0.88f);
         ceilingMaterial.SetFloat("_Metallic", 0f);
         ceilingMaterial.SetFloat("_Smoothness", 0f);
@@ -420,17 +471,17 @@ public class ProceduralLevelGenerator : MonoBehaviour
         {
             for (int x = 0; x < 512; x++)
             {
-                float noise = Mathf.PerlinNoise(x * 0.01f, y * 0.01f);
-                Color col = Color.Lerp(
+                float noise = Mathf.PerlinNoise(x * 0.02f, y * 0.02f);
+                Color baseColor = Color.Lerp(
                     new Color(0.78f, 0.73f, 0.56f),
                     new Color(0.70f, 0.65f, 0.48f),
                     noise
                 );
 
-                if (Random.value < 0.05f)
-                    col = Color.Lerp(col, new Color(0.5f, 0.5f, 0.5f), 0.3f);
+                if (Random.value < 0.04f)
+                    baseColor = Color.Lerp(baseColor, new Color(0.55f, 0.50f, 0.40f), 0.4f);
 
-                pixels[y * 512 + x] = col;
+                pixels[y * 512 + x] = baseColor;
             }
         }
 
@@ -448,20 +499,20 @@ public class ProceduralLevelGenerator : MonoBehaviour
         {
             for (int x = 0; x < 512; x++)
             {
-                float noise = Mathf.PerlinNoise(x * 0.01f, y * 0.015f);
-                Color col = Color.Lerp(
+                float noise = Mathf.PerlinNoise(x * 0.014f, y * 0.014f);
+                Color baseColor = Color.Lerp(
                     new Color(0.93f, 0.90f, 0.80f),
                     new Color(0.88f, 0.84f, 0.72f),
                     noise
                 );
 
                 if (y % 64 < 4)
-                    col = Color.Lerp(col, new Color(0.6f, 0.55f, 0.4f), 0.4f);
+                    baseColor = Color.Lerp(baseColor, new Color(0.62f, 0.58f, 0.46f), 0.35f);
 
-                if (Random.value < 0.08f)
-                    col = Color.Lerp(col, new Color(0.4f, 0.4f, 0.3f), 0.5f);
+                if (Random.value < 0.06f)
+                    baseColor = Color.Lerp(baseColor, new Color(0.47f, 0.44f, 0.35f), 0.45f);
 
-                pixels[y * 512 + x] = col;
+                pixels[y * 512 + x] = baseColor;
             }
         }
 
@@ -479,17 +530,17 @@ public class ProceduralLevelGenerator : MonoBehaviour
         {
             for (int x = 0; x < 512; x++)
             {
-                float noise = Mathf.PerlinNoise(x * 0.008f, y * 0.008f);
-                Color col = Color.Lerp(
+                float noise = Mathf.PerlinNoise(x * 0.012f, y * 0.012f);
+                Color baseColor = Color.Lerp(
                     new Color(0.97f, 0.95f, 0.88f),
                     new Color(0.92f, 0.90f, 0.82f),
                     noise
                 );
 
-                if (x % 128 < 8 && y % 128 < 8)
-                    col = new Color(1f, 0.98f, 0.85f);
+                if ((x + y) % 128 < 8)
+                    baseColor = new Color(1f, 0.98f, 0.86f);
 
-                pixels[y * 512 + x] = col;
+                pixels[y * 512 + x] = baseColor;
             }
         }
 
